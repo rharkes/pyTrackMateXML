@@ -1,2 +1,2 @@
-pandas
-pytables
+lxml~=4.9.1
+numpy~=1.23.3

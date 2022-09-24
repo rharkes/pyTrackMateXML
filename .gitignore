@@ -1,2 +1,4 @@
-**/*.xml
-**/*.h5
+/venv/
+/.idea/
+/.ipynb_checkpoints/
+temp.py
