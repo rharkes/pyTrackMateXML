@@ -1,5 +1,7 @@
 # pyTrackMateXML
-For opening ImageJ TrackMate .xml files with python.
+For opening ImageJ TrackMate .xml files with python. Enables users to follow intensity traces based on TrackMate tracking results.
+
+Alternative options are found [here](https://imagej.net/plugins/trackmate/#interoperability-with-python).
 
 ## TrackMate
 From: https://imagej.net/TrackMate
