@@ -20,7 +20,7 @@ import logging
 
 import numpy as np
 from lxml import etree
-from version_parser import Version
+from version_parser import Version, VersionType
 
 
 class TrackmateXML:
@@ -86,11 +86,11 @@ class TrackmateXML:
         self._getversion(tree.getroot())
         self._analysetree(tree)
 
-    def getversion(self) -> Version:
+    def getversion(self) -> str:
         """
-        Get the version of the TrackmateXML data.
+        Get the version of the TrackmateXML data as string.
         """
-        return self.version
+        return self.version.get_typed_version(VersionType.VERSION)
 
     def _getversion(self, root) -> None:
         if root.tag == 'TrackMate':
