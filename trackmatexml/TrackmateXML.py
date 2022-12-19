@@ -14,7 +14,7 @@ GNU General Public License for more details.
 You should have received a copy of the GNU General Public License
 along with this program.  If not, see <https://www.gnu.org/licenses/>.
 """
-
+import json
 import os
 import logging
 
@@ -42,6 +42,7 @@ class TrackmateXML:
         self.spots = np.zeros((0, 0), dtype=float)
         self.tracks = []  # type: [np.ndarray]
         self.tracknames = []  # type: [str]
+        self.displaysettings = {}
 
     def __bool__(self):
         if self.version:
@@ -113,11 +114,16 @@ class TrackmateXML:
                 self._getsettings(element)
             elif element.tag == "GUIState":
                 self._get_gui_state(element)
+            elif element.tag == "DisplaySettings":
+                self._get_display_settings(element)
             else:
                 logging.error(f"Unrecognised element {element}")
 
     def _getlog(self, element: etree.Element) -> None:
         self.log = element.text
+
+    def _get_display_settings(self, element: etree.Element) -> None:
+        self.displaysettings = json.loads(element.text)
 
     def _getmodel(self, element: etree.Element) -> None:
         self.spatialunits = element.attrib.get("spatialunits", None)
