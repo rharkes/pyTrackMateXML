@@ -16,6 +16,6 @@ jobs:
         with:
           python-version: ${{ matrix.python-version }}
       - name: Install dependencies
-        run: pip install mypy lxml lxml-stubs
+        run: pip install mypy numpy lxml lxml-stubs
       - name: MyPy test typing
         run: mypy
