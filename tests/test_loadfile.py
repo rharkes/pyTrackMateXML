@@ -1,7 +1,7 @@
+import pytest
 import tomllib
 from pathlib import Path
 from trackmatexml import TrackmateXML
-import pytest
 
 
 @pytest.fixture
