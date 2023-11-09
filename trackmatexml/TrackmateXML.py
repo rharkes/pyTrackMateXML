@@ -14,13 +14,43 @@ GNU General Public License for more details.
 You should have received a copy of the GNU General Public License
 along with this program.  If not, see <https://www.gnu.org/licenses/>.
 """
+import io
 import json
 import os
 import logging
+from contextlib import AbstractContextManager
+from pathlib import Path
+from types import TracebackType
+from typing import Any, Union, Optional, Type, BinaryIO
 
 import numpy as np
 from lxml import etree
-from version_parser import Version, VersionType
+
+
+class TrackmateXMLFile(AbstractContextManager[Any]):
+    """
+    Context manager for handeling TrackmateXML files
+    """
+
+    def __init__(self, pth: Union[str, os.PathLike[Any]]) -> None:
+        pth = Path(pth)
+        if not pth.exists() or not pth.is_file():
+            raise FileNotFoundError(pth)
+        self.pth = pth
+
+    def __enter__(self) -> "TrackmateXML":
+        self.tmxml = TrackmateXML()
+        self.file = io.FileIO(self.pth, "r")
+        self.tmxml.loadstream(self.file)
+        return self.tmxml
+
+    def __exit__(
+        self,
+        exc_type: Optional[Type[BaseException]],
+        exc_value: Optional[BaseException],
+        traceback: Optional[TracebackType],
+    ) -> None:
+        self.file.close()
 
 
 class TrackmateXML:
@@ -49,6 +79,9 @@ class TrackmateXML:
             return True
         else:
             return False
+
+    def loadstream(self, fp: BinaryIO) -> None:
+        self._load(etree.parse(fp))
 
     def loadfile(self, pth: os.PathLike) -> None:
         """
@@ -93,11 +126,11 @@ class TrackmateXML:
         """
         Get the version of the TrackmateXML data as string.
         """
-        return self.version.get_typed_version(VersionType.VERSION)
+        return self.version
 
     def _getversion(self, root) -> None:
         if root.tag == "TrackMate":
-            self.version = Version(root.attrib.get("version", None))
+            self.version = root.attrib.get("version", None)
             if self.version is None:
                 logging.error(f"Invalid Version")
         else:
