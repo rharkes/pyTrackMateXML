@@ -23,9 +23,17 @@ from contextlib import AbstractContextManager
 from pathlib import Path
 from types import TracebackType
 from typing import Any, Union, Optional, Type, BinaryIO, List, Dict
-
 import numpy as np
 from lxml import etree
+from dataclasses import dataclass
+
+
+@dataclass
+class AnalyzedTrack:
+    parent: int
+    cell: int
+    spotids: np.ndarray[Any, np.dtype[np.int32]]
+    track: bool
 
 
 class TrackmateXMLFile(AbstractContextManager[Any]):
@@ -68,20 +76,24 @@ class TrackmateXML:
     def __init__(self, loglevel: int = logging.ERROR) -> None:
         self.logger = logging.getLogger(__name__)
         if loglevel < logging.ERROR:
-            handler = logging.StreamHandler(sys.stdout)  # set output to stdout instead of stderror
+            handler = logging.StreamHandler(
+                sys.stdout
+            )  # set output to stdout instead of stderror
             handler.setLevel(loglevel)
-            formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+            formatter = logging.Formatter(
+                "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+            )
             handler.setFormatter(formatter)
             self.logger.addHandler(handler)
         else:
             self.logger.setLevel(loglevel)
         self.logger.info("Logger Initialized")
-        self.version = None  # type: Union[str, None]
-        self.spatialunits = None  # type: Union[str, None]
-        self.timeunits = None  # type: Union[str, None]
+        self.version = ""  # type: str
+        self.spatialunits = ""  # type: str
+        self.timeunits = ""  # type: str
         self.spotheader = []  # type:List[str]
         self.spots = np.zeros((0, 0), dtype=float)
-        self.tracks = []  # type: List[np.ndarray[Any, np.dtype[np.float64]]]
+        self.tracks = []  # type: List[np.ndarray[Any, np.dtype[np.int32]]]
         self.tracknames = []  # type: List[str]
         self.displaysettings = {}  # type: Dict[str, str]
 
@@ -100,22 +112,28 @@ class TrackmateXML:
         """
         self._load(etree.parse(pth))
 
-    def loadtree(self, tree: etree.ElementTree) -> None:
+    def loadtree(self, tree: etree._ElementTree) -> None:
         """
         Load a Trackmate XML-tree
         """
         self._load(tree)
 
     def gettraces(
-        self, trackname, spot_property: str, duplicate_split=False, break_split=False
-    ) -> list:
+        self,
+        trackname: str,
+        spot_property: str,
+        duplicate_split: bool = False,
+        break_split: bool = False,
+    ) -> List[np.ndarray[Any, np.dtype[np.float64]]]:
         """
         Get traces from a trackname and a spot-property
         """
         tracks = self.analysetrack(trackname, duplicate_split, break_split)
-        return [self.getproperty(track["spotids"], spot_property) for track in tracks]
+        return [self.getproperty(track.spotids, spot_property) for track in tracks]
 
-    def getproperty(self, spotids: np.ndarray, spot_property: str) -> np.ndarray:
+    def getproperty(
+        self, spotids: np.ndarray[Any, np.dtype[np.int32]], spot_property: str
+    ) -> np.ndarray[Any, np.dtype[np.float64]]:
         """
         Get properties from spotids
         """
@@ -124,12 +142,12 @@ class TrackmateXML:
             return np.zeros((0, 0), dtype=float)
         prop_idx = self.spotheader.index(spot_property)
         spotid_idx = self.spotheader.index("ID")
-        res = np.zeros(len(spotids), dtype=np.float)
+        res = np.zeros(len(spotids), dtype=np.float64)
         for i, s in enumerate(spotids):
-            res[i] = self.spots[self.spots[:, spotid_idx] == s, prop_idx]
+            res[i] = self.spots[self.spots[:, spotid_idx] == s, prop_idx][0]
         return res
 
-    def _load(self, tree) -> None:
+    def _load(self, tree: etree._ElementTree) -> None:
         self.logger.info("Getting version")
         self._getversion(tree.getroot())
         self.logger.info("Analyzing tree")
@@ -140,17 +158,21 @@ class TrackmateXML:
         """
         Get the version of the TrackmateXML data as string.
         """
-        return self.version
+        return self.version if self.version else ""
 
-    def _getversion(self, root) -> None:
+    def _getversion(self, root: etree._Element) -> None:
         if root.tag == "TrackMate":
-            self.version = root.attrib.get("version", None)
-            if self.version is None:
+            v = root.attrib.get("version", "")
+            if v == "":
                 self.logger.error(f"Invalid Version")
+            elif type(v) == bytes:
+                self.logger.error(f"Invalid Version")
+            else:
+                self.version = str(v)
         else:
             self.logger.error("Not a TrackMateXML")
 
-    def _analysetree(self, tree) -> None:
+    def _analysetree(self, tree: etree._ElementTree) -> None:
         root = tree.getroot()
         for element in root:
             if element.tag == "Log":
@@ -166,15 +188,15 @@ class TrackmateXML:
             else:
                 self.logger.error(f"Unrecognised element {element}")
 
-    def _getlog(self, element: etree.Element) -> None:
+    def _getlog(self, element: etree._Element) -> None:
         self.log = element.text
 
-    def _get_display_settings(self, element: etree.Element) -> None:
-        self.displaysettings = json.loads(element.text)
+    def _get_display_settings(self, element: etree._Element) -> None:
+        self.displaysettings = json.loads(str(element.text))
 
-    def _getmodel(self, element: etree.Element) -> None:
-        self.spatialunits = element.attrib.get("spatialunits", None)
-        self.timeunits = element.attrib.get("timeunits", None)
+    def _getmodel(self, element: etree._Element) -> None:
+        self.spatialunits = str(element.attrib.get("spatialunits", ""))
+        self.timeunits = str(element.attrib.get("timeunits", ""))
         for subelement in element:
             if subelement.tag == "FeatureDeclarations":
                 pass  # would be nice if the feature declaration would actually list the features in the xml, but instead it lists all possible features
@@ -187,62 +209,62 @@ class TrackmateXML:
             else:
                 self.logger.error(f"Unrecognised element {element}")
 
-    def _getsettings(self, element: etree.Element) -> None:
+    def _getsettings(self, element: etree._Element) -> None:
         """
         Could be added, but is not required for displaying intensity tracks
         """
         pass
 
-    def _getfilteredtracks(self, element: etree.Element) -> None:
+    def _getfilteredtracks(self, element: etree._Element) -> None:
         """
         Could be added, but is not required for displaying intensity tracks
         """
         pass
 
-    def _get_gui_state(self, element: etree.Element) -> None:
+    def _get_gui_state(self, element: etree._Element) -> None:
         """
         Could be added, but does not seem usefull in python.
         """
         pass
 
-    def _getspots(self, element: etree.Element) -> None:
+    def _getspots(self, element: etree._Element) -> None:
         """
         Put all numeric spot data in a numpy array.
         """
-        nspots = int(element.attrib.get("nspots", "0"))
+        nspots = int(str(element.attrib.get("nspots", "0")))
         # construct header
         spotid = 0
         spot = element[0][0]
-        keys = [a for a in spot.attrib]
+        keys = [str(a) for a in spot.attrib]
         for k in keys:
             try:
                 float(spot.attrib[k])
             except ValueError:  # remove keys we cannot convert to floats
                 keys.remove(k)
         self.spotheader = keys
-        self.spots = np.zeros((nspots, len(keys)))
+        self.spots = np.zeros((nspots, len(keys)), dtype=np.float64)
         for sif in element:
             for spot in sif:
                 for i, k in enumerate(keys):
-                    self.spots[spotid, i] = spot.attrib.get(k, None)
+                    self.spots[spotid, i] = float(str(spot.attrib.get(k, "nan")))
                 spotid += 1
 
-    def _gettracks(self, element: etree.Element) -> None:
+    def _gettracks(self, element: etree._Element) -> None:
         """
         Importing only source and target into a numpy array and listing the trackname.
         We could import more, but it is not needed for displaying intensity tracks.
         """
         for track in element:
-            t = np.zeros((len(track), 2), dtype=np.int)
+            t = np.zeros((len(track), 2), dtype=np.int32)
             for i, edge in enumerate(track):
-                t[i, 0] = edge.attrib.get("SPOT_SOURCE_ID", -1)
-                t[i, 1] = edge.attrib.get("SPOT_TARGET_ID", -1)
+                t[i, 0] = int(str(edge.attrib.get("SPOT_SOURCE_ID", "-1")))
+                t[i, 1] = int(str(edge.attrib.get("SPOT_TARGET_ID", "-1")))
             self.tracks.append(t)
-            self.tracknames.append(track.attrib.get("name", "unknown"))
+            self.tracknames.append(str(track.attrib.get("name", "unknown")))
 
     def analysetrack(
-        self, trackname: str, duplicate_split=False, break_split=False
-    ) -> list:
+        self, trackname: str, duplicate_split: bool = False, break_split: bool = False
+    ) -> List[AnalyzedTrack]:
         """
         Traces a track to find the sequence of spotids
         """
@@ -250,8 +272,8 @@ class TrackmateXML:
         return self.analysetrackid(trackid, duplicate_split, break_split)
 
     def analysetrackid(
-        self, trackid: int, duplicate_split=False, break_split=False
-    ) -> list:
+        self, trackid: int, duplicate_split: bool = False, break_split: bool = False
+    ) -> List[AnalyzedTrack]:
         """
         Traces a track to find the sequence of spotids
         """
@@ -264,72 +286,70 @@ class TrackmateXML:
             return []
         cellid = 1
         traced_tracks = [
-            {
-                "parent": 0,
-                "cell": cellid,
-                "spotids": track[
-                    np.argwhere(track[:, 0] == unique_sources), :
-                ].flatten(),
-                "track": True,
-            }
+            AnalyzedTrack(
+                parent=0,
+                cell=cellid,
+                spotids=track[np.argwhere(track[:, 0] == unique_sources), :].flatten(),
+                track=True,
+            )
         ]
-        while any([x["track"] for x in traced_tracks]):
+        while any([x.track for x in traced_tracks]):
             for traced_track in traced_tracks:
-                if not traced_track["track"]:
+                if not traced_track.track:
                     continue
-                traced_track_ids = traced_track["spotids"]
+                traced_track_ids = traced_track.spotids
                 targetidx = np.argwhere(
                     track[:, 0] == traced_track_ids[-1]
                 ).flatten()  # do we find the last index in the sources?
                 if targetidx.size == 0:
-                    traced_track["track"] = False  # reached the end of the track
+                    traced_track.track = False  # reached the end of the track
                 elif targetidx.size == 1:
-                    traced_track["spotids"] = np.concatenate(
+                    traced_track.spotids = np.concatenate(
                         (traced_track_ids, track[targetidx, 1])
                     )  # append target to track
                 else:  # multiple targets, a split
                     if duplicate_split:  # a copy of the history is added to each track
                         for i in range(1, targetidx.size):
                             spotids = np.concatenate(
-                                (traced_track_ids, [track[targetidx[i], 1]])
+                                (traced_track_ids, track[targetidx[i], 1].flatten())
                             )
                             cellid += 1
-                            new_track = {
-                                "parent": traced_track["cell"],
-                                "cell": cellid,
-                                "spotids": spotids,
-                                "track": True,
-                            }
+                            new_track = AnalyzedTrack(
+                                parent=traced_track.cell,
+                                cell=cellid,
+                                spotids=spotids,
+                                track=True,
+                            )
                             traced_tracks.append(new_track)
                     else:
                         for i in range(1, targetidx.size):
                             spotids = track[targetidx[i], :]
                             cellid += 1
-                            new_track = {
-                                "parent": traced_track["cell"],
-                                "cell": cellid,
-                                "spotids": spotids,
-                                "track": True,
-                            }
+                            new_track = AnalyzedTrack(
+                                parent=traced_track.cell,
+                                cell=cellid,
+                                spotids=spotids,
+                                track=True,
+                            )
                             traced_tracks.append(new_track)
                     if break_split:
-                        traced_track["track"] = False  # end the parent
+                        traced_track.track = False  # end the parent
                         if duplicate_split:
                             spotids = np.concatenate(
-                                (traced_track_ids, [track[targetidx[0], 1]])
+                                (traced_track_ids, track[targetidx[0], 1].flatten())
                             )
                         else:
                             spotids = track[targetidx[0], :]  # start child
                         cellid += 1
-                        new_track = {
-                            "parent": traced_track["cell"],
-                            "cell": cellid,
-                            "spotids": spotids,
-                            "track": True,
-                        }
+                        new_track = AnalyzedTrack(
+                            parent=traced_track.cell,
+                            cell=cellid,
+                            spotids=spotids,
+                            track=True,
+                        )
                         traced_tracks.append(new_track)
                     else:
-                        traced_track["spotids"] = np.concatenate(
-                            (traced_track_ids, [track[targetidx[0], 1]])
+                        traced_track.spotids = np.concatenate(
+                            (traced_track_ids, track[targetidx[0], 1].flatten())
                         )  # append target to track
         return traced_tracks

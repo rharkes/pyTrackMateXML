@@ -1,0 +1,8 @@
+[FakeTracks]
+version = "7.6.0"
+spatialunits="pixel"
+timeunits="sec"
+nspots=84
+ntracks=2
+tracknames=['Track_16', 'Track_17']
+trackmeans = { Track_16= {MEAN_INTENSITY_CH1= [96.7457, 100.705, 96.7225]} }
