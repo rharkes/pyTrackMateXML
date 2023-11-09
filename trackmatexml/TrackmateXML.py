@@ -18,10 +18,11 @@ import io
 import json
 import os
 import logging
+import sys
 from contextlib import AbstractContextManager
 from pathlib import Path
 from types import TracebackType
-from typing import Any, Union, Optional, Type, BinaryIO
+from typing import Any, Union, Optional, Type, BinaryIO, List, Dict
 
 import numpy as np
 from lxml import etree
@@ -64,17 +65,27 @@ class TrackmateXML:
     https://scholar.google.com/scholar?cluster=9846627681021220605
     """
 
-    def __init__(self):
-        self.version = None
-        self.spatialunits = None
-        self.timeunits = None
-        self.spotheader = []  # type:[str]
+    def __init__(self, loglevel: int = logging.ERROR) -> None:
+        self.logger = logging.getLogger(__name__)
+        if loglevel < logging.ERROR:
+            handler = logging.StreamHandler(sys.stdout)  # set output to stdout instead of stderror
+            handler.setLevel(loglevel)
+            formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+            handler.setFormatter(formatter)
+            self.logger.addHandler(handler)
+        else:
+            self.logger.setLevel(loglevel)
+        self.logger.info("Logger Initialized")
+        self.version = None  # type: Union[str, None]
+        self.spatialunits = None  # type: Union[str, None]
+        self.timeunits = None  # type: Union[str, None]
+        self.spotheader = []  # type:List[str]
         self.spots = np.zeros((0, 0), dtype=float)
-        self.tracks = []  # type: [np.ndarray]
-        self.tracknames = []  # type: [str]
-        self.displaysettings = {}
+        self.tracks = []  # type: List[np.ndarray[Any, np.dtype[np.float64]]]
+        self.tracknames = []  # type: List[str]
+        self.displaysettings = {}  # type: Dict[str, str]
 
-    def __bool__(self):
+    def __bool__(self) -> bool:
         if self.version:
             return True
         else:
@@ -83,7 +94,7 @@ class TrackmateXML:
     def loadstream(self, fp: BinaryIO) -> None:
         self._load(etree.parse(fp))
 
-    def loadfile(self, pth: os.PathLike) -> None:
+    def loadfile(self, pth: Union[str, os.PathLike[Any]]) -> None:
         """
         Load a TrackMate XML-file
         """
@@ -109,7 +120,7 @@ class TrackmateXML:
         Get properties from spotids
         """
         if spot_property not in self.spotheader:
-            logging.error(f"{spot_property} not in spot properties")
+            self.logger.error(f"{spot_property} not in spot properties")
             return np.zeros((0, 0), dtype=float)
         prop_idx = self.spotheader.index(spot_property)
         spotid_idx = self.spotheader.index("ID")
@@ -119,8 +130,11 @@ class TrackmateXML:
         return res
 
     def _load(self, tree) -> None:
+        self.logger.info("Getting version")
         self._getversion(tree.getroot())
+        self.logger.info("Analyzing tree")
         self._analysetree(tree)
+        self.logger.info("Finished loading")
 
     def getversion(self) -> str:
         """
@@ -132,9 +146,9 @@ class TrackmateXML:
         if root.tag == "TrackMate":
             self.version = root.attrib.get("version", None)
             if self.version is None:
-                logging.error(f"Invalid Version")
+                self.logger.error(f"Invalid Version")
         else:
-            logging.error("Not a TrackMateXML")
+            self.logger.error("Not a TrackMateXML")
 
     def _analysetree(self, tree) -> None:
         root = tree.getroot()
@@ -150,7 +164,7 @@ class TrackmateXML:
             elif element.tag == "DisplaySettings":
                 self._get_display_settings(element)
             else:
-                logging.error(f"Unrecognised element {element}")
+                self.logger.error(f"Unrecognised element {element}")
 
     def _getlog(self, element: etree.Element) -> None:
         self.log = element.text
@@ -171,7 +185,7 @@ class TrackmateXML:
             elif subelement.tag == "FilteredTracks":
                 self._getfilteredtracks(subelement)
             else:
-                logging.error(f"Unrecognised element {element}")
+                self.logger.error(f"Unrecognised element {element}")
 
     def _getsettings(self, element: etree.Element) -> None:
         """
@@ -244,7 +258,7 @@ class TrackmateXML:
         track = self.tracks[trackid]
         unique_sources = np.setdiff1d(track[:, 0], track[:, 1], assume_unique=True)
         if unique_sources.size != 1:
-            logging.error(
+            self.logger.error(
                 f"Track has {unique_sources.size} startingpoints. Cannot follow track."
             )
             return []
